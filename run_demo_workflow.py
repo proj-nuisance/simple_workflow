@@ -82,19 +82,23 @@ def toJSON(stats, seg_file, structure_map):
     return os.path.abspath(out_file)
 
 
-def create_workflow(subject_id, outdir, file_url):
+def create_workflow(subject_id, outdir, file_url=None, is_path=False):
     """Create a workflow for a single participant"""
+    import nibabel as nb
 
     sink_directory = os.path.join(outdir, subject_id)
     
     wf = Workflow(name=subject_id)
-
-    getter = Node(Function(input_names=['url'], output_names=['localfile'],
-                           function=download_file), name="download_url")
-    getter.inputs.url = file_url
-
     orienter = Node(Reorient2Std(), name='reorient_brain')
-    wf.connect(getter, 'localfile', orienter, 'in_file')
+
+    if not is_path:
+        getter = Node(Function(input_names=['url'], output_names=['localfile'],
+                               function=download_file), name="download_url")
+        getter.inputs.url = file_url
+        wf.connect(getter, 'localfile', orienter, 'in_file')
+
+    else:
+        orienter.inputs.in_file = os.path.abspath(file_url)
 
     better = Node(BET(), name='extract_brain')
     wf.connect(orienter, 'out_file', better, 'in_file')
@@ -163,7 +167,9 @@ if  __name__ == '__main__':
     parser = ArgumentParser(description=__doc__,
                             formatter_class=RawTextHelpFormatter)
     parser.add_argument("--key", dest="key",
-                        help="google docs key")
+                        help = "google docs key")
+    parser.add_argument("--path", dest="path", nargs='+',
+                        help="file path")
     parser.add_argument("-o", "--output_dir", dest="sink_dir", default='output',
                         help="Sink directory base")
     parser.add_argument("-w", "--work_dir", dest="work_dir",
@@ -182,37 +188,47 @@ if  __name__ == '__main__':
         work_dir = os.path.abspath(args.work_dir)
     else:
         work_dir = sink_dir
-
-    import sys
-    import requests
-    import pandas as pd
-
-    #key = '11an55u9t2TAf0EV2pHN0vOd8Ww2Gie-tHp9xGULh_dA'
-    r = requests.get('https://docs.google.com/spreadsheets/d/{key}/export?format=csv&id={key}'.format(key=args.key))
-    if sys.version_info < (3,):
-        from StringIO import StringIO  # got moved to io in python3.
-        data = StringIO(r.content)
-    else:
-        from io import StringIO
-        data = StringIO(r.content.decode())
-
-    df = pd.read_csv(data)
-    max_subjects = df.shape[0]
-    if args.num_subjects:
-        max_subjects = args.num_subjects
-    elif ('CIRCLECI' in os.environ and os.environ['CIRCLECI'] == 'true'):
-        max_subjects = 1
     
     meta_wf = Workflow('metaflow')
     count = 0
-    for row in df.iterrows():
-        wf = create_workflow(row[1].Subject, sink_dir, row[1]['File Path'])
-        meta_wf.add_nodes([wf])
-        print('Added workflow for: {}'.format(row[1].Subject))
-        count = count + 1
-        # run this for only one person on CircleCI
-        if count >= max_subjects:
-            break
+
+    if args.path:
+        for item in args.path:
+            wf = create_workflow("simpleworkflow"+str(count), sink_dir, file_url=item, is_path=True)
+            meta_wf.add_nodes([wf])
+            print('Added workflow for: {}'.format(item.split('/')[-1]))
+            count = count + 1
+
+    elif args.key:
+        import sys
+        import requests
+        import pandas as pd
+        # key = '11an55u9t2TAf0EV2pHN0vOd8Ww2Gie-tHp9xGULh_dA'
+        r = requests.get(
+            'https://docs.google.com/spreadsheets/d/{key}/export?format=csv&id={key}'.format(key=args.key))
+        if sys.version_info < (3,):
+            from StringIO import StringIO  # got moved to io in python3.
+            data = StringIO(r.content)
+        else:
+            from io import StringIO
+            data = StringIO(r.content.decode())
+
+        df = pd.read_csv(data)
+        max_subjects = df.shape[0]
+
+        if args.num_subjects:
+            max_subjects = args.num_subjects
+        elif 'CIRCLECI' in os.environ and os.environ['CIRCLECI'] == 'true':
+            max_subjects = 1
+
+        for row in df.iterrows():
+            wf = create_workflow(row[1].Subject, sink_dir, file_url=row[1]['File Path'])
+            meta_wf.add_nodes([wf])
+            print('Added workflow for: {}'.format(row[1].Subject))
+            count += 1
+            # run this for only one person on CircleCI
+            if count >= max_subjects:
+                break
 
     meta_wf.base_dir = work_dir
     meta_wf.config['execution']['remove_unnecessary_files'] = False
