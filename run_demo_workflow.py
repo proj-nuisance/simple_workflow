@@ -11,6 +11,7 @@ from nipype import Workflow, Node, MapNode, Function
 from nipype.interfaces.fsl import BET, FAST, FIRST, Reorient2Std, ImageMaths, ImageStats
 from nipype.interfaces.io import DataSink
 
+
 def download_file(url):
     """Download file for a given participant"""
     import requests
@@ -57,6 +58,7 @@ def download_file(url):
         else:
             break
     return out_file
+
 
 def toJSON(stats, seg_file, structure_map):
     """Combine stats files to a single JSON file"""
