@@ -1,4 +1,4 @@
-#/usr/bin/env python3
+#!/usr/bin/env python
 """Run a demo workflow that retrieves brain images and processes them
 
 """
@@ -168,8 +168,6 @@ if  __name__ == '__main__':
                             formatter_class=RawTextHelpFormatter)
     parser.add_argument("--key", dest="key",
                         help = "google docs key")
-    parser.add_argument("--path", dest="path", nargs='+',
-                        help="file path")
     parser.add_argument("-o", "--output_dir", dest="sink_dir", default='output',
                         help="Sink directory base")
     parser.add_argument("-w", "--work_dir", dest="work_dir",
@@ -181,6 +179,7 @@ if  __name__ == '__main__':
                         help="Plugin arguments")
     parser.add_argument("-n", dest="num_subjects", type=int,
                         help="Number of subjects")
+    parser.add_argument("paths", metavar="PATH", nargs='*', help="file paths")
     args = parser.parse_args()
 
     sink_dir = os.path.abspath(args.sink_dir)
@@ -190,14 +189,14 @@ if  __name__ == '__main__':
         work_dir = sink_dir
     
     meta_wf = Workflow('metaflow')
-    count = 0
 
-    if args.path:
-        for item in args.path:
-            wf = create_workflow("simpleworkflow"+str(count), sink_dir, file_url=item, is_path=True)
+    count = 0
+    if args.paths:
+        for path in args.paths:
+            basename = os.path.basename(path).split('.', 1)[0]
+            wf = create_workflow(basename, sink_dir, file_url=path, is_path=True)
             meta_wf.add_nodes([wf])
-            print('Added workflow for: {}'.format(item.split('/')[-1]))
-            count = count + 1
+            print('Added workflow for: {}'.format(basename))
 
     elif args.key:
         import sys
